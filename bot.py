@@ -868,64 +868,64 @@ class ModerationBot:
         except TelegramError:
             return False
         
-async def cmd_appeal(self, update: Update, context: CallbackContext):
-    """Команда /appeal для подачи обжалования"""
-    user_id = update.effective_user.id
-    
-    # Проверяем, заблокирован ли пользователь
-    if not db.is_user_banned(user_id):
-        await update.message.reply_text("❌ Вы не заблокированы, обжалование не требуется")
-        return
-    
-    if len(context.args) < 1:
-        await update.message.reply_text(
-            "Для подачи обжалования укажите причину:\n"
-            "/appeal <ваше объяснение>\n\n"
-            "Например: /appeal Я не нарушал правила, сообщение было неправильно понято"
-        )
-        return
-    
-    appeal_text = " ".join(context.args)
-    
-    if len(appeal_text) < 10:
-        await update.message.reply_text("❌ Текст обжалования слишком короткий (минимум 10 символов)")
-        return
-    
-    if len(appeal_text) > 1000:
-        await update.message.reply_text("❌ Текст обжалования слишком длинный (максимум 1000 символов)")
-        return
-    
-    appeal_id = db.add_appeal(user_id, appeal_text)
-    
-    if appeal_id == -1:
-        await update.message.reply_text("❌ У вас уже есть активное обжалование. Дождитесь рассмотрения.")
-        return
-    elif appeal_id == 0:
-        await update.message.reply_text("❌ Ошибка при подаче обжалования. Попробуйте позже.")
-        return
-    
-    await update.message.reply_text(
-        f"✅ Ваше обжалование #{appeal_id} принято к рассмотрению.\n"
-        "Администраторы рассмотрят его в ближайшее время."
-    )
-    
-    # Уведомляем админов
-    if bot_config.ADMIN_CHAT_ID:
-        user = update.effective_user
-        admin_notification = (
-            f"📮 Новое обжалование #{appeal_id}\n"
-            f"👤 От: {user.first_name} (@{user.username or 'без username'})\n"
-            f"🆔 User ID: {user_id}\n"
-            f"📝 Текст: {appeal_text}\n\n"
-            f"Команды:\n/accept_appeal {appeal_id}\n/reject_appeal {appeal_id}"
-        )
-        try:
-            await self.application.bot.send_message(
-                chat_id=bot_config.ADMIN_CHAT_ID,
-                text=admin_notification
+    async def cmd_appeal(self, update: Update, context: CallbackContext):
+        """Команда /appeal для подачи обжалования"""
+        user_id = update.effective_user.id
+        
+        # Проверяем, заблокирован ли пользователь
+        if not db.is_user_banned(user_id):
+            await update.message.reply_text("❌ Вы не заблокированы, обжалование не требуется")
+            return
+        
+        if len(context.args) < 1:
+            await update.message.reply_text(
+                "Для подачи обжалования укажите причину:\n"
+                "/appeal <ваше объяснение>\n\n"
+                "Например: /appeal Я не нарушал правила, сообщение было неправильно понято"
             )
-        except Exception as e:
-            self.logger.error(f"Ошибка отправки уведомления админам: {e}")
+            return
+        
+        appeal_text = " ".join(context.args)
+        
+        if len(appeal_text) < 10:
+            await update.message.reply_text("❌ Текст обжалования слишком короткий (минимум 10 символов)")
+            return
+        
+        if len(appeal_text) > 1000:
+            await update.message.reply_text("❌ Текст обжалования слишком длинный (максимум 1000 символов)")
+            return
+        
+        appeal_id = db.add_appeal(user_id, appeal_text)
+        
+        if appeal_id == -1:
+            await update.message.reply_text("❌ У вас уже есть активное обжалование. Дождитесь рассмотрения.")
+            return
+        elif appeal_id == 0:
+            await update.message.reply_text("❌ Ошибка при подаче обжалования. Попробуйте позже.")
+            return
+        
+        await update.message.reply_text(
+            f"✅ Ваше обжалование #{appeal_id} принято к рассмотрению.\n"
+            "Администраторы рассмотрят его в ближайшее время."
+        )
+        
+        # Уведомляем админов
+        if bot_config.ADMIN_CHAT_ID:
+            user = update.effective_user
+            admin_notification = (
+                f"📮 Новое обжалование #{appeal_id}\n"
+                f"👤 От: {user.first_name} (@{user.username or 'без username'})\n"
+                f"🆔 User ID: {user_id}\n"
+                f"📝 Текст: {appeal_text}\n\n"
+                f"Команды:\n/accept_appeal {appeal_id}\n/reject_appeal {appeal_id}"
+            )
+            try:
+                await self.application.bot.send_message(
+                    chat_id=bot_config.ADMIN_CHAT_ID,
+                    text=admin_notification
+                )
+            except Exception as e:
+                self.logger.error(f"Ошибка отправки уведомления админам: {e}")
 
     async def cmd_list_appeals(self, update: Update, context: CallbackContext):
         """Команда /list_appeals для просмотра обжалований"""
@@ -1038,60 +1038,60 @@ async def cmd_appeal(self, update: Update, context: CallbackContext):
         else:
             await update.message.reply_text("❌ Ошибка при отклонении обжалования")
 
-async def cmd_confirm_accept(self, update: Update, context: CallbackContext):
-    """Команда /confirm_accept для подтверждения принятия обжалования"""
-    if not await self.is_admin(update.effective_user.id):
-        await update.message.reply_text("❌ Команда доступна только администраторам")
-        return
-    
-    if len(context.args) < 1:
-        await update.message.reply_text("❌ Некорректное использование команды")
-        return
-    
-    try:
-        appeal_id = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("❌ Некорректный ID обжалования")
-        return
-    
-    appeal = db.get_appeal_by_id(appeal_id)
-    if not appeal or appeal.status != "pending":
-        await update.message.reply_text("❌ Обжалование не найдено или уже рассмотрено")
-        return
-    
-    admin_id = update.effective_user.id
-    
-    # Принимаем обжалование
-    success = db.update_appeal_status(appeal_id, "approved", admin_id, "Обжалование принято")
-    
-    if success:
-        # Разблокируем пользователя
-        db.unban_user(appeal.user_id)
+    async def cmd_confirm_accept(self, update: Update, context: CallbackContext):
+        """Команда /confirm_accept для подтверждения принятия обжалования"""
+        if not await self.is_admin(update.effective_user.id):
+            await update.message.reply_text("❌ Команда доступна только администраторам")
+            return
         
-        await update.message.reply_text(f"✅ Обжалование #{appeal_id} принято, пользователь разблокирован")
+        if len(context.args) < 1:
+            await update.message.reply_text("❌ Некорректное использование команды")
+            return
         
-        # Уведомляем пользователя
         try:
-            await self.application.bot.send_message(
-                chat_id=appeal.user_id,
-                text=f"🎉 Ваше обжалование #{appeal_id} принято! Вы разблокированы."
-            )
-        except Exception as e:
-            self.logger.error(f"Ошибка уведомления пользователя: {e}")
-    else:
-        await update.message.reply_text("❌ Ошибка при принятии обжалования")
-    
-    async def error_handler(self, update: Update, context: CallbackContext):
-        """Обработчик ошибок"""
-        self.logger.error(f"Ошибка при обработке обновления: {context.error}")
+            appeal_id = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text("❌ Некорректный ID обжалования")
+            return
         
-        if update and update.effective_message:
+        appeal = db.get_appeal_by_id(appeal_id)
+        if not appeal or appeal.status != "pending":
+            await update.message.reply_text("❌ Обжалование не найдено или уже рассмотрено")
+            return
+        
+        admin_id = update.effective_user.id
+        
+        # Принимаем обжалование
+        success = db.update_appeal_status(appeal_id, "approved", admin_id, "Обжалование принято")
+        
+        if success:
+            # Разблокируем пользователя
+            db.unban_user(appeal.user_id)
+            
+            await update.message.reply_text(f"✅ Обжалование #{appeal_id} принято, пользователь разблокирован")
+            
+            # Уведомляем пользователя
             try:
-                await update.effective_message.reply_text(
-                    "❌ Произошла ошибка при обработке сообщения"
+                await self.application.bot.send_message(
+                    chat_id=appeal.user_id,
+                    text=f"🎉 Ваше обжалование #{appeal_id} принято! Вы разблокированы."
                 )
-            except TelegramError:
-                pass  # Игнорируем ошибки отправки
+            except Exception as e:
+                self.logger.error(f"Ошибка уведомления пользователя: {e}")
+        else:
+            await update.message.reply_text("❌ Ошибка при принятии обжалования")
+        
+        async def error_handler(self, update: Update, context: CallbackContext):
+            """Обработчик ошибок"""
+            self.logger.error(f"Ошибка при обработке обновления: {context.error}")
+            
+            if update and update.effective_message:
+                try:
+                    await update.effective_message.reply_text(
+                        "❌ Произошла ошибка при обработке сообщения"
+                    )
+                except TelegramError:
+                    pass  # Игнорируем ошибки отправки
 
 # Глобальный экземпляр бота
 bot = ModerationBot()
