@@ -299,9 +299,18 @@ class ModerationBot:
                 action_taken=recommended_action,
                 ai_confidence=analysis.confidence
             )
-            
-            # Выполняем действие
+
+            # Сначала удаляем нарушающее сообщение
+            await self.delete_message_safe(message)
+
+            # Затем выполняем действие модерации
             await self.execute_moderation_action(message, recommended_action, analysis.reason)
+
+            # Отправляем предупреждение в ЛС пользователю
+            if recommended_action in ["delete", "warn", "mute", "ban"]:
+                warning_text = f"⚠️ Ваше сообщение нарушает правила чата и было удалено.\n\nПричина: {analysis.reason}"
+                await self.send_private_warning(message.from_user, warning_text)
+
             self.stats['violations_detected'] += 1
             
         except Exception as e:
@@ -395,7 +404,7 @@ class ModerationBot:
         user_id = message.from_user.id
         
         if action == "delete":
-            await self.delete_message_safe(message)
+            # Сообщение уже удалено в handle_ai_analysis
             await self.notify_user_action(message, "message_deleted", reason)
             
         elif action == "warn":
@@ -410,15 +419,14 @@ class ModerationBot:
                 self.stats['users_banned'] += 1
                 
         elif action == "mute":
-            # Временное ограничение (в Telegram это restrict)
+            # Сообщение уже удалено
             db.ban_user(user_id, bot_config.BAN_DURATION_MINUTES)
-            await self.delete_message_safe(message)
             await self.notify_user_action(message, "muted", reason)
             self.stats['users_banned'] += 1
             
         elif action == "ban":
+            # Сообщение уже удалено
             db.ban_user(user_id, None)  # Постоянный бан
-            await self.delete_message_safe(message)
             await self.notify_user_action(message, "banned", reason)
             self.stats['users_banned'] += 1
     
@@ -455,7 +463,7 @@ class ModerationBot:
             )
             
             # Удаляем уведомление через 30 секунд
-            asyncio.create_task(self.delete_message_after_delay(bot_message, 30))
+            asyncio.create_task(self.delete_message_after_delay(bot_message, 60))
             
             # Уведомляем админов в приватном чате
             if bot_config.ADMIN_CHAT_ID:
