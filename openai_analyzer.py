@@ -162,18 +162,15 @@ class OpenAIAnalyzer:
             return None
     
     def is_violation_significant(self, analysis: AnalysisResult) -> bool:
-        """
-        Определяет, является ли нарушение значительным на основе уверенности
-        
-        Args:
-            analysis: Результат анализа
-            
-        Returns:
-            bool: True если нарушение значительное
-        """
+        """Определяет, является ли нарушение значительным"""
         if not analysis.violation:
             return False
         
+        # Дополнительная проверка на критику УК
+        criticism_words = ["бездельники", "халтурят", "не работают", "плохо работают"]
+        if analysis.violation_type in ["insults", "disrespect"] and analysis.confidence < 0.95:
+            return False
+            
         return analysis.confidence >= bot_config.OPENAI_ANALYSIS_THRESHOLD
     
     def get_recommended_action(self, analysis: AnalysisResult, user_warnings: int = 0) -> str:
