@@ -22,7 +22,19 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config import bot_config
 from bot import bot
-from gui import ModerationGUI
+# Условный импорт GUI только если не на сервере
+GUI_AVAILABLE = True
+try:
+    if os.getenv('RAILWAY_ENVIRONMENT') or os.getenv('DYNO') or os.getenv('HEROKU_APP_NAME'):
+        # В облачной среде GUI не нужен
+        GUI_AVAILABLE = False
+        ModerationGUI = None
+    else:
+        from gui import ModerationGUI
+except ImportError:
+    GUI_AVAILABLE = False
+    ModerationGUI = None
+    print("⚠️ GUI недоступен - работаем только в консольном режиме")
 
 # Проверка на Railway деплой
 def is_railway_deploy():
@@ -103,6 +115,11 @@ async def run_console_mode():
 
 def run_gui_mode():
     """Запуск с графическим интерфейсом"""
+    if not GUI_AVAILABLE or ModerationGUI is None:
+        print("❌ GUI недоступен в этой среде")
+        print("🔄 Переключение на консольный режим...")
+        return run_console_mode()
+    
     try:
         print("🖥️ Запуск графического интерфейса...")
         
@@ -114,8 +131,8 @@ def run_gui_mode():
         
     except Exception as e:
         print(f"❌ Ошибка запуска GUI: {e}")
-        logging.error(f"Ошибка запуска GUI: {e}")
-        return False
+        print("🔄 Переключение на консольный режим...")
+        return run_console_mode()
 
 def check_dependencies():
     """Проверка наличия необходимых зависимостей"""
@@ -267,12 +284,6 @@ def main():
     
     # Показываем логотип
     print_logo()
-
-    # Проверка на Railway
-    if setup_railway_config():
-        print("🚂 Режим: Railway Cloud")
-        # Принудительно используем консольный режим
-        args.console = True
     
     # Проверка зависимостей
     if args.check_deps:
@@ -297,15 +308,21 @@ def main():
     # Настройка обработчиков сигналов
     setup_signal_handlers()
     
+    is_cloud = setup_railway_config()
+    
     try:
-        if args.console:
-            # Консольный режим
+        if args.console or is_cloud:
+            # Консольный режим (обязательно в облаке)
             print("🖥️ Режим: Консольный")
             success = asyncio.run(run_console_mode())
         else:
-            # GUI режим
-            print("🖼️ Режим: Графический интерфейс")
-            success = run_gui_mode()
+            # GUI режим (только локально)
+            if GUI_AVAILABLE:
+                print("🖼️ Режим: Графический интерфейс")
+                success = run_gui_mode()
+            else:
+                print("⚠️ GUI недоступен, запуск в консольном режиме")
+                success = asyncio.run(run_console_mode())
         
         if success:
             print("\n✅ Программа завершена успешно")
