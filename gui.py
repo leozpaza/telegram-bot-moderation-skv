@@ -351,6 +351,13 @@ class ModerationGUI:
         ttk.Spinbox(actions_row2, from_=1, to=10080, textvariable=self.ban_time_var, 
                    width=10).pack(side=tk.LEFT, padx=5)
         
+        # Обжалования пользователя
+        appeals_frame = ttk.LabelFrame(users_frame, text="Обжалования пользователя", padding=10)
+        appeals_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        self.appeals_info_text = scrolledtext.ScrolledText(appeals_frame, height=4, wrap=tk.WORD)
+        self.appeals_info_text.pack(fill=tk.BOTH, expand=True)
+        
         # История нарушений
         violations_frame = ttk.LabelFrame(users_frame, text="История нарушений", padding=10)
         violations_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -1066,6 +1073,30 @@ class ModerationGUI:
             messagebox.showerror("Ошибка", "Некорректный ID пользователя")
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка разблокировки: {e}")
+
+    def load_user_appeals(self, user_id: int):
+        """Загрузка обжалований пользователя"""
+        try:
+            # Здесь можно добавить метод в database.py для получения обжалований пользователя
+            appeals = db.get_user_appeals(user_id, 5)  # Нужно добавить этот метод в database.py
+            
+            self.appeals_info_text.delete(1.0, tk.END)
+            
+            if not appeals:
+                self.appeals_info_text.insert(tk.END, "Обжалований нет")
+                return
+            
+            for appeal in appeals:
+                status_text = {"pending": "Ожидает", "approved": "Принято", "rejected": "Отклонено"}
+                status = status_text.get(appeal.status, appeal.status)
+                date_str = appeal.created_at.strftime('%d.%m %H:%M') if appeal.created_at else 'Неизвестно'
+                
+                self.appeals_info_text.insert(tk.END, f"#{appeal.id} - {status} ({date_str})\n")
+                self.appeals_info_text.insert(tk.END, f"{appeal.appeal_text[:100]}...\n\n")
+        
+        except Exception as e:
+            self.appeals_info_text.delete(1.0, tk.END)
+            self.appeals_info_text.insert(tk.END, f"Ошибка загрузки: {e}")
     
     def load_banned_words(self):
         """Загрузка списка запрещенных слов"""

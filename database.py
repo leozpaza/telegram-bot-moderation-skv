@@ -41,6 +41,18 @@ class Violation:
     ai_confidence: Optional[float] = None
     created_at: datetime = None
 
+@dataclass
+class Appeal:
+    """Модель обжалования"""
+    id: Optional[int] = None
+    user_id: int = None
+    appeal_text: str = None
+    status: str = "pending"  # pending, approved, rejected
+    admin_id: Optional[int] = None
+    admin_response: Optional[str] = None
+    created_at: datetime = None
+    updated_at: datetime = None
+
 class ModerationDatabase:
     """Класс для работы с базой данных модерации"""
     
@@ -98,11 +110,28 @@ class ModerationDatabase:
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
                 """)
+
+                # Таблица обжалований
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS appeals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    appeal_text TEXT NOT NULL,
+                    status TEXT DEFAULT 'pending',
+                    admin_id INTEGER,
+                    admin_response TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (user_id)
+                )
+                """)
                 
                 # Индексы для оптимизации
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_ban_until ON users(ban_until)")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_violations_user_id ON violations(user_id)")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_violations_created_at ON violations(created_at)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_appeals_user_id ON appeals(user_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_appeals_status ON appeals(status)")
                 
                 conn.commit()
                 self.logger.info("База данных инициализирована успешно")
@@ -622,6 +651,120 @@ class ModerationDatabase:
         except sqlite3.Error as e:
             self.logger.error(f"Ошибка получения пользователей по уровню доверия {trust_level}: {e}")
             return []
+        
+    def add_appeal(self, user_id: int, appeal_text: str) -> int:
+        """Добавить обжалование"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Проверяем, нет ли уже активного обжалования
+                cursor.execute("""
+                SELECT id FROM appeals 
+                WHERE user_id = ? AND status = 'pending'
+                """, (user_id,))
+                
+                if cursor.fetchone():
+                    return -1  # Уже есть активное обжалование
+                
+                cursor.execute("""
+                INSERT INTO appeals (user_id, appeal_text)
+                VALUES (?, ?)
+                """, (user_id, appeal_text))
+                
+                appeal_id = cursor.lastrowid
+                conn.commit()
+                
+                self.logger.info(f"Добавлено обжалование {appeal_id} от пользователя {user_id}")
+                return appeal_id
+                
+        except sqlite3.Error as e:
+            self.logger.error(f"Ошибка добавления обжалования: {e}")
+            return 0
+
+    def get_pending_appeals(self) -> List[Appeal]:
+        """Получить список ожидающих обжалований"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                cursor.execute("""
+                SELECT * FROM appeals 
+                WHERE status = 'pending'
+                ORDER BY created_at ASC
+                """)
+                
+                appeals = []
+                for row in cursor.fetchall():
+                    appeals.append(Appeal(
+                        id=row['id'],
+                        user_id=row['user_id'],
+                        appeal_text=row['appeal_text'],
+                        status=row['status'],
+                        admin_id=row['admin_id'],
+                        admin_response=row['admin_response'],
+                        created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None,
+                        updated_at=datetime.fromisoformat(row['updated_at']) if row['updated_at'] else None
+                    ))
+                
+                return appeals
+                
+        except sqlite3.Error as e:
+            self.logger.error(f"Ошибка получения обжалований: {e}")
+            return []
+
+    def update_appeal_status(self, appeal_id: int, status: str, admin_id: int, admin_response: str = None) -> bool:
+        """Обновить статус обжалования"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute("""
+                UPDATE appeals 
+                SET status = ?, admin_id = ?, admin_response = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """, (status, admin_id, admin_response, appeal_id))
+                
+                success = cursor.rowcount > 0
+                conn.commit()
+                
+                if success:
+                    self.logger.info(f"Обжалование {appeal_id} обновлено: {status}")
+                
+                return success
+                
+        except sqlite3.Error as e:
+            self.logger.error(f"Ошибка обновления обжалования: {e}")
+            return False
+
+    def get_appeal_by_id(self, appeal_id: int) -> Optional[Appeal]:
+        """Получить обжалование по ID"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                cursor.execute("SELECT * FROM appeals WHERE id = ?", (appeal_id,))
+                row = cursor.fetchone()
+                
+                if row:
+                    return Appeal(
+                        id=row['id'],
+                        user_id=row['user_id'],
+                        appeal_text=row['appeal_text'],
+                        status=row['status'],
+                        admin_id=row['admin_id'],
+                        admin_response=row['admin_response'],
+                        created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None,
+                        updated_at=datetime.fromisoformat(row['updated_at']) if row['updated_at'] else None
+                    )
+                
+                return None
+                
+        except sqlite3.Error as e:
+            self.logger.error(f"Ошибка получения обжалования {appeal_id}: {e}")
+            return None
 
 # Глобальная инстанция базы данных
 db = ModerationDatabase()
