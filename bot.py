@@ -1081,17 +1081,17 @@ class ModerationBot:
         else:
             await update.message.reply_text("❌ Ошибка при принятии обжалования")
         
-        async def error_handler(self, update: Update, context: CallbackContext):
-            """Обработчик ошибок"""
-            self.logger.error(f"Ошибка при обработке обновления: {context.error}")
-            
-            if update and update.effective_message:
-                try:
-                    await update.effective_message.reply_text(
-                        "❌ Произошла ошибка при обработке сообщения"
-                    )
-                except TelegramError:
-                    pass  # Игнорируем ошибки отправки
+    async def error_handler(self, update: Update, context: CallbackContext):
+        """Обработчик ошибок"""
+        self.logger.error(f"Ошибка при обработке обновления: {context.error}")
+        
+        if update and update.effective_message:
+            try:
+                await update.effective_message.reply_text(
+                    "❌ Произошла ошибка при обработке сообщения"
+                )
+            except TelegramError:
+                pass  # Игнорируем ошибки отправки
 
 # Глобальный экземпляр бота
 bot = ModerationBot()
