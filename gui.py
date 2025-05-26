@@ -210,6 +210,16 @@ class ModerationGUI:
         # Для Scale виджета, sticky=tk.EW также поможет ему занять доступное место, если это нужно
         ttk.Scale(openai_group, from_=0.0, to=1.0, variable=self.openai_threshold_var,
                  orient=tk.HORIZONTAL, length=200).grid(row=3, column=1, sticky=tk.EW, padx=5) # ИЗМЕНЕНО: sticky=tk.EW
+        
+        # Показываем текущее значение порога
+        self.threshold_label = ttk.Label(openai_group, text="")
+        self.threshold_label.grid(row=4, column=1, sticky=tk.W, padx=5)
+
+        def update_threshold_label():
+            self.threshold_label.config(text=f"Текущий: {self.openai_threshold_var.get():.2f}")
+
+        self.openai_threshold_var.trace('w', lambda *args: update_threshold_label())
+        update_threshold_label()
 
         # ДОБАВЛЕНО: Настройка растяжения колонки для полей ввода и комбобокса
         openai_group.columnconfigure(1, weight=1)

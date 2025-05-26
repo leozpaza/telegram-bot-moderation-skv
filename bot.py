@@ -292,6 +292,12 @@ class ModerationBot:
             # Проверяем, значительно ли нарушение
             if not analyzer.is_violation_significant(analysis):
                 return  # Нарушение не критично
+
+            # Дополнительная проверка - если уверенность меньше 0.9 и это не явные нарушения, пропускаем
+            if (analysis.confidence < 0.9 and 
+                analysis.violation_type not in ["bad_language", "insults", "advertising", "spam"]):
+                self.logger.info(f"AI нашел потенциальное нарушение, но уверенность низкая: {analysis.confidence}")
+                return
             
             self.logger.info(f"AI обнаружил нарушение: {analysis.violation_type} (уверенность: {analysis.confidence})")
             
