@@ -201,55 +201,55 @@ class ModerationBot:
                 self.logger.error(f"Ошибка в фоновых задачах: {e}")
                 await asyncio.sleep(60)  # Пауза при ошибке
     
-        async def handle_message(self, update: Update, context: CallbackContext):
-            """Обработчик входящих сообщений"""
-            # Проверяем что у нас есть сообщение и пользователь
-            message = update.message or update.edited_message
+    async def handle_message(self, update: Update, context: CallbackContext):
+        """Обработчик входящих сообщений"""
+        # Проверяем что у нас есть сообщение и пользователь
+        message = update.message or update.edited_message
+        
+        if not message:
+            self.logger.debug("Получено обновление без сообщения")
+            return
             
-            if not message:
-                self.logger.debug("Получено обновление без сообщения")
-                return
-                
-            user = message.from_user
-            if not user:
-                self.logger.debug("Получено сообщение без пользователя")
-                return
-        
-        self.stats['messages_processed'] += 1
-        
-        # Создаем/обновляем пользователя в БД
-        db_user = db.create_or_update_user(
-            user_id=user.id,
-            username=user.username,
-            first_name=user.first_name,
-            last_name=user.last_name
-        )
-
-        # Обновляем активность пользователя
-        db.update_user_activity(user.id, increment_messages=True)
-
-        # Обновляем уровень доверия
-        trust_level = db.update_trust_level(user.id)
-        
-        # Проверяем, не заблокирован ли пользователь
-        if db.is_user_banned(user.id):
-            await self.delete_message_safe(message)
+        user = message.from_user
+        if not user:
+            self.logger.debug("Получено сообщение без пользователя")
             return
+    
+    self.stats['messages_processed'] += 1
+    
+    # Создаем/обновляем пользователя в БД
+    db_user = db.create_or_update_user(
+        user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name
+    )
 
-        # Система доверия - проверка ссылок
-        if await self.handle_trust_system(message, db_user):
-            return  # Сообщение обработано системой доверия
+    # Обновляем активность пользователя
+    db.update_user_activity(user.id, increment_messages=True)
 
-        # Проверяем на запрещенные слова
-        has_banned_words, found_words = check_banned_words(message.text)
-        
-        if has_banned_words:
-            await self.handle_banned_words_violation(message, found_words, db_user)
-            return
-        
-        # Если запрещенные слова не найдены, анализируем через AI
-        if bot_config.USE_OPENAI_ANALYSIS:
-            await self.handle_ai_analysis(message, db_user)
+    # Обновляем уровень доверия
+    trust_level = db.update_trust_level(user.id)
+    
+    # Проверяем, не заблокирован ли пользователь
+    if db.is_user_banned(user.id):
+        await self.delete_message_safe(message)
+        return
+
+    # Система доверия - проверка ссылок
+    if await self.handle_trust_system(message, db_user):
+        return  # Сообщение обработано системой доверия
+
+    # Проверяем на запрещенные слова
+    has_banned_words, found_words = check_banned_words(message.text)
+    
+    if has_banned_words:
+        await self.handle_banned_words_violation(message, found_words, db_user)
+        return
+    
+    # Если запрещенные слова не найдены, анализируем через AI
+    if bot_config.USE_OPENAI_ANALYSIS:
+        await self.handle_ai_analysis(message, db_user)
     
     async def handle_banned_words_violation(self, message: Message, found_words: List[str], user: User):
         """Обработка нарушения с запрещенными словами"""
@@ -1117,38 +1117,38 @@ class ModerationBot:
             await update.message.reply_text("❌ Ошибка при принятии обжалования")
 
     async def cmd_delete_message(self, update: Update, context: CallbackContext):
-    """Команда /del для удаления сообщений бота"""
-    if not await self.is_admin(update.effective_user.id):
-        await update.message.reply_text("❌ Команда доступна только администраторам")
-        return
-    
-    # Проверяем, является ли это ответом на сообщение
-    if not update.message.reply_to_message:
-        await update.message.reply_text(
-            "❌ Ответьте на сообщение бота которое нужно удалить.\n"
-            "Или используйте: /del <message_id>"
-        )
-        return
-    
-    target_message = update.message.reply_to_message
-    
-    # Проверяем, что это сообщение от нашего бота
-    if target_message.from_user.id != context.bot.id:
-        await update.message.reply_text("❌ Можно удалять только сообщения бота")
-        return
-    
-    try:
-        # Удаляем сообщение бота
-        await target_message.delete()
+        """Команда /del для удаления сообщений бота"""
+        if not await self.is_admin(update.effective_user.id):
+            await update.message.reply_text("❌ Команда доступна только администраторам")
+            return
         
-        # Удаляем команду админа (для чистоты чата)
-        await update.message.delete()
+        # Проверяем, является ли это ответом на сообщение
+        if not update.message.reply_to_message:
+            await update.message.reply_text(
+                "❌ Ответьте на сообщение бота которое нужно удалить.\n"
+                "Или используйте: /del <message_id>"
+            )
+            return
         
-        self.logger.info(f"Админ {update.effective_user.id} удалил сообщение бота {target_message.message_id}")
+        target_message = update.message.reply_to_message
         
-    except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка удаления: {e}")
-        self.logger.error(f"Ошибка удаления сообщения: {e}")
+        # Проверяем, что это сообщение от нашего бота
+        if target_message.from_user.id != context.bot.id:
+            await update.message.reply_text("❌ Можно удалять только сообщения бота")
+            return
+        
+        try:
+            # Удаляем сообщение бота
+            await target_message.delete()
+            
+            # Удаляем команду админа (для чистоты чата)
+            await update.message.delete()
+            
+            self.logger.info(f"Админ {update.effective_user.id} удалил сообщение бота {target_message.message_id}")
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Ошибка удаления: {e}")
+            self.logger.error(f"Ошибка удаления сообщения: {e}")
         
     async def error_handler(self, update: Update, context: CallbackContext):
         """Обработчик ошибок"""
