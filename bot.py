@@ -1135,33 +1135,55 @@ class ModerationBot:
             await update.message.reply_text("❌ Команда доступна только администраторам")
             return
         
-        # Проверяем, является ли это ответом на сообщение
-        if not update.message.reply_to_message:
-            await update.message.reply_text(
-                "❌ Ответьте на сообщение бота которое нужно удалить.\n"
-                "Или используйте: /del <message_id>"
-            )
-            return
+        chat_id = update.effective_chat.id
         
-        target_message = update.message.reply_to_message
+        # Вариант 1: удаление по ID сообщения (/del 6325)
+        if len(context.args) >= 1:
+            try:
+                message_id = int(context.args[0])
+                
+                # Пытаемся удалить сообщение по ID
+                await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+                
+                # Удаляем команду админа
+                await update.message.delete()
+                
+                self.logger.info(f"Админ {update.effective_user.id} удалил сообщение {message_id}")
+                return
+                
+            except ValueError:
+                await update.message.reply_text("❌ Некорректный ID сообщения")
+                return
+            except Exception as e:
+                await update.message.reply_text(f"❌ Ошибка удаления по ID: {e}")
+                self.logger.error(f"Ошибка удаления сообщения {message_id}: {e}")
+                return
         
-        # Проверяем, что это сообщение от нашего бота
-        if target_message.from_user.id != context.bot.id:
-            await update.message.reply_text("❌ Можно удалять только сообщения бота")
-            return
+        # Вариант 2: удаление ответом на сообщение
+        if update.message.reply_to_message:
+            target_message = update.message.reply_to_message
+            
+            try:
+                # Удаляем сообщение (любое, не только от бота)
+                await target_message.delete()
+                
+                # Удаляем команду админа
+                await update.message.delete()
+                
+                self.logger.info(f"Админ {update.effective_user.id} удалил сообщение {target_message.message_id}")
+                return
+                
+            except Exception as e:
+                await update.message.reply_text(f"❌ Ошибка удаления: {e}")
+                self.logger.error(f"Ошибка удаления сообщения: {e}")
+                return
         
-        try:
-            # Удаляем сообщение бота
-            await target_message.delete()
-            
-            # Удаляем команду админа (для чистоты чата)
-            await update.message.delete()
-            
-            self.logger.info(f"Админ {update.effective_user.id} удалил сообщение бота {target_message.message_id}")
-            
-        except Exception as e:
-            await update.message.reply_text(f"❌ Ошибка удаления: {e}")
-            self.logger.error(f"Ошибка удаления сообщения: {e}")
+        # Если ни ID ни ответ не предоставлены
+        await update.message.reply_text(
+            "❌ Используйте:\n"
+            "• `/del 6325` - удалить по ID\n"
+            "• Ответьте на сообщение и напишите `/del`"
+        )
         
     async def error_handler(self, update: Update, context: CallbackContext):
         """Обработчик ошибок"""
