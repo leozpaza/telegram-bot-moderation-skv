@@ -470,8 +470,8 @@ class ModerationBot:
                 parse_mode=ParseMode.MARKDOWN
             )
             
-            # Удаляем уведомление через 30 секунд
-            asyncio.create_task(self.delete_message_after_delay(bot_message, 60))
+            # Удаляем уведомление через 10 секунд  
+            asyncio.create_task(self.delete_message_after_delay(bot_message, 10))
             
             # Уведомляем админов в приватном чате
             if bot_config.ADMIN_CHAT_ID:
