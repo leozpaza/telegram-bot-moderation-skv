@@ -118,10 +118,17 @@ class ModerationBot:
         self.application.add_handler(CommandHandler("list_appeals", self.cmd_list_appeals))
         self.application.add_handler(CommandHandler("accept_appeal", self.cmd_accept_appeal))
         self.application.add_handler(CommandHandler("reject_appeal", self.cmd_reject_appeal))
+
+        self.application.add_handler(CommandHandler("del", self.cmd_delete_message))
+        self.application.add_handler(CommandHandler("delete", self.cmd_delete_message))
         
         # Обработчик сообщений
         self.application.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message)
+        )
+
+        self.application.add_handler(
+            MessageHandler(filters.UpdateType.EDITED_MESSAGE, self.handle_edited_message)
         )
         
         # Обработчик изменений участников чата
@@ -194,13 +201,19 @@ class ModerationBot:
                 self.logger.error(f"Ошибка в фоновых задачах: {e}")
                 await asyncio.sleep(60)  # Пауза при ошибке
     
-    async def handle_message(self, update: Update, context: CallbackContext):
-        """Обработчик входящих сообщений"""
-        message = update.message
-        user = message.from_user
-        
-        if not message or not user:
-            return
+        async def handle_message(self, update: Update, context: CallbackContext):
+            """Обработчик входящих сообщений"""
+            # Проверяем что у нас есть сообщение и пользователь
+            message = update.message or update.edited_message
+            
+            if not message:
+                self.logger.debug("Получено обновление без сообщения")
+                return
+                
+            user = message.from_user
+            if not user:
+                self.logger.debug("Получено сообщение без пользователя")
+                return
         
         self.stats['messages_processed'] += 1
         
@@ -461,6 +474,12 @@ class ModerationBot:
         except TelegramError as e:
             self.logger.warning(f"Не удалось удалить сообщение {message.message_id}: {e}")
             return False
+
+    async def handle_edited_message(self, update: Update, context: CallbackContext):
+        """Обработчик отредактированных сообщений"""
+        self.logger.debug("Получено отредактированное сообщение, игнорируем")
+        # Пока просто игнорируем отредактированные сообщения
+        pass
     
     async def notify_user_action(self, message: Message, action: str, reason: str):
         """Уведомление о действии модерации"""
@@ -664,27 +683,28 @@ class ModerationBot:
         
         if is_admin:
             help_text = """
-    📋 Команды администратора:
-
-    👮 Модерация:
-    /stats - Статистика модерации  
-    /ban <user_id> [время] - Заблокировать пользователя
-    /unban <user_id> - Разблокировать пользователя
-    /mute <user_id> [время] - Ограничить пользователя
-    /warn <user_id> - Предупреждение пользователю
-    /user_info <user_id> - Информация о пользователе
-    /cleanup - Очистка истекших банов
-
-    🔒 Система доверия:
-    /trust_info [user_id] - Информация о доверии
-    /trust_stats - Статистика доверия  
-    /set_trust <user_id> <level> - Установить уровень доверия
-
-    📮 Обжалования:
-    /list_appeals - Список активных обжалований
-    /accept_appeal <appeal_id> - Принять обжалование
-    /reject_appeal <appeal_id> - Отклонить обжалование
-    """
+        📋 Команды администратора:
+        
+        👮 Модерация:
+        /stats - Статистика модерации  
+        /ban <user_id> [время] - Заблокировать пользователя
+        /unban <user_id> - Разблокировать пользователя
+        /mute <user_id> [время] - Ограничить пользователя
+        /warn <user_id> - Предупреждение пользователю
+        /user_info <user_id> - Информация о пользователе
+        /cleanup - Очистка истекших банов
+        /del - Удалить сообщение бота (ответом)
+        
+        🔒 Система доверия:
+        /trust_info [user_id] - Информация о доверии
+        /trust_stats - Статистика доверия  
+        /set_trust <user_id> <level> - Установить уровень доверия
+        
+        📮 Обжалования:
+        /list_appeals - Список активных обжалований
+        /accept_appeal <appeal_id> - Принять обжалование
+        /reject_appeal <appeal_id> - Отклонить обжалование
+        """
         else:
             help_text = """
     📋 Доступные команды:
@@ -1095,6 +1115,40 @@ class ModerationBot:
                 self.logger.error(f"Ошибка уведомления пользователя: {e}")
         else:
             await update.message.reply_text("❌ Ошибка при принятии обжалования")
+
+    async def cmd_delete_message(self, update: Update, context: CallbackContext):
+    """Команда /del для удаления сообщений бота"""
+    if not await self.is_admin(update.effective_user.id):
+        await update.message.reply_text("❌ Команда доступна только администраторам")
+        return
+    
+    # Проверяем, является ли это ответом на сообщение
+    if not update.message.reply_to_message:
+        await update.message.reply_text(
+            "❌ Ответьте на сообщение бота которое нужно удалить.\n"
+            "Или используйте: /del <message_id>"
+        )
+        return
+    
+    target_message = update.message.reply_to_message
+    
+    # Проверяем, что это сообщение от нашего бота
+    if target_message.from_user.id != context.bot.id:
+        await update.message.reply_text("❌ Можно удалять только сообщения бота")
+        return
+    
+    try:
+        # Удаляем сообщение бота
+        await target_message.delete()
+        
+        # Удаляем команду админа (для чистоты чата)
+        await update.message.delete()
+        
+        self.logger.info(f"Админ {update.effective_user.id} удалил сообщение бота {target_message.message_id}")
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка удаления: {e}")
+        self.logger.error(f"Ошибка удаления сообщения: {e}")
         
     async def error_handler(self, update: Update, context: CallbackContext):
         """Обработчик ошибок"""
