@@ -215,41 +215,41 @@ class ModerationBot:
             self.logger.debug("Получено сообщение без пользователя")
             return
     
-    self.stats['messages_processed'] += 1
+        self.stats['messages_processed'] += 1
+        
+        # Создаем/обновляем пользователя в БД
+        db_user = db.create_or_update_user(
+            user_id=user.id,
+            username=user.username,
+            first_name=user.first_name,
+            last_name=user.last_name
+        )
     
-    # Создаем/обновляем пользователя в БД
-    db_user = db.create_or_update_user(
-        user_id=user.id,
-        username=user.username,
-        first_name=user.first_name,
-        last_name=user.last_name
-    )
-
-    # Обновляем активность пользователя
-    db.update_user_activity(user.id, increment_messages=True)
-
-    # Обновляем уровень доверия
-    trust_level = db.update_trust_level(user.id)
+        # Обновляем активность пользователя
+        db.update_user_activity(user.id, increment_messages=True)
     
-    # Проверяем, не заблокирован ли пользователь
-    if db.is_user_banned(user.id):
-        await self.delete_message_safe(message)
-        return
-
-    # Система доверия - проверка ссылок
-    if await self.handle_trust_system(message, db_user):
-        return  # Сообщение обработано системой доверия
-
-    # Проверяем на запрещенные слова
-    has_banned_words, found_words = check_banned_words(message.text)
+        # Обновляем уровень доверия
+        trust_level = db.update_trust_level(user.id)
+        
+        # Проверяем, не заблокирован ли пользователь
+        if db.is_user_banned(user.id):
+            await self.delete_message_safe(message)
+            return
     
-    if has_banned_words:
-        await self.handle_banned_words_violation(message, found_words, db_user)
-        return
+        # Система доверия - проверка ссылок
+        if await self.handle_trust_system(message, db_user):
+            return  # Сообщение обработано системой доверия
     
-    # Если запрещенные слова не найдены, анализируем через AI
-    if bot_config.USE_OPENAI_ANALYSIS:
-        await self.handle_ai_analysis(message, db_user)
+        # Проверяем на запрещенные слова
+        has_banned_words, found_words = check_banned_words(message.text)
+        
+        if has_banned_words:
+            await self.handle_banned_words_violation(message, found_words, db_user)
+            return
+        
+        # Если запрещенные слова не найдены, анализируем через AI
+        if bot_config.USE_OPENAI_ANALYSIS:
+            await self.handle_ai_analysis(message, db_user)
     
     async def handle_banned_words_violation(self, message: Message, found_words: List[str], user: User):
         """Обработка нарушения с запрещенными словами"""
