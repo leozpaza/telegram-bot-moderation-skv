@@ -893,14 +893,26 @@ class ModerationBot:
     
     async def is_admin(self, user_id: int) -> bool:
         """Проверка, является ли пользователь администратором"""
+        # Сначала проверяем по списку админов
+        admin_ids_str = os.getenv("ADMIN_USER_IDS", "")
+        if admin_ids_str:
+            try:
+                admin_ids = [int(id_str.strip()) for id_str in admin_ids_str.split(",") if id_str.strip()]
+                if user_id in admin_ids:
+                    return True
+            except ValueError:
+                self.logger.error("Неверный формат ADMIN_USER_IDS")
+        
+        # Потом проверяем статус в чате
         try:
             if not bot_config.CHAT_ID:
-                return True  # Если чат не настроен, разрешаем всем
+                return False  # Изменил на False для безопасности
             
             chat_member = await self.application.bot.get_chat_member(bot_config.CHAT_ID, user_id)
             return chat_member.status in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]
             
-        except TelegramError:
+        except TelegramError as e:
+            self.logger.error(f"Ошибка проверки админа {user_id}: {e}")
             return False
         
     async def cmd_appeal(self, update: Update, context: CallbackContext):
