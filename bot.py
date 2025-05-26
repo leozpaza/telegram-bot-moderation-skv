@@ -292,6 +292,15 @@ class ModerationBot:
             # Проверяем, значительно ли нарушение
             if not analyzer.is_violation_significant(analysis):
                 return  # Нарушение не критично
+            
+            # Дополнительная защита от ложных срабатываний для тем УК
+            uk_keywords = ["забор", "парадная", "двор", "ремонт", "покрас", "убор", "лифт", "отопление", "вода", "домофон", "подъезд", "управляющ"]
+            message_lower = message.text.lower()
+
+            if any(keyword in message_lower for keyword in uk_keywords):
+                if analysis.confidence < 0.98:  # Очень высокий порог для тем УК
+                    self.logger.info(f"Сообщение содержит тему УК, пропускаем: {analysis.violation_type}")
+                    return
 
             # Дополнительная проверка - если уверенность меньше 0.9 и это не явные нарушения, пропускаем
             if (analysis.confidence < 0.9 and 
