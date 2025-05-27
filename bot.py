@@ -27,6 +27,15 @@ from database import db, User
 from openai_analyzer import analyzer, AnalysisResult
 from banned_words import check_banned_words
 
+# Условный импорт антиспама
+try:
+    from antispam import antispam, SpamDetectionResult
+    ANTISPAM_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"Модуль antispam не найден: {e}")
+    ANTISPAM_AVAILABLE = False
+    antispam = None
+
 # Условный импорт детектора ссылок
 try:
     from link_detector import detect_links, has_suspicious_links, is_trusted_link
@@ -105,6 +114,7 @@ class ModerationBot:
         self.application.add_handler(CommandHandler("mute", self.cmd_mute))
         self.application.add_handler(CommandHandler("warn", self.cmd_warn))
         self.application.add_handler(CommandHandler("user_info", self.cmd_user_info))
+        self.application.add_handler(CommandHandler("spam_info", self.cmd_spam_info))
         self.application.add_handler(CommandHandler("cleanup", self.cmd_cleanup))
 
         # Команды системы доверия
@@ -194,6 +204,10 @@ class ModerationBot:
                 cleaned_bans = db.cleanup_expired_bans()
                 if cleaned_bans > 0:
                     self.logger.info(f"Очищено {cleaned_bans} истекших банов")
+
+                # Очистка старых данных антиспама
+                if ANTISPAM_AVAILABLE:
+                    antispam.cleanup_old_data()
                 
                 # Ожидание перед следующей проверкой
                 await asyncio.sleep(300)  # 5 минут
@@ -236,6 +250,13 @@ class ModerationBot:
         if db.is_user_banned(user.id):
             await self.delete_message_safe(message)
             return
+        
+        # Проверка антиспама
+        if ANTISPAM_AVAILABLE and bot_config.ANTISPAM_ENABLED:
+            spam_result = antispam.check_message(user.id, message.text)
+            if spam_result:
+                await self.handle_spam_violation(message, spam_result, db_user)
+                return
     
         # Система доверия - проверка ссылок
         if await self.handle_trust_system(message, db_user):
@@ -423,6 +444,69 @@ class ModerationBot:
         
         self.stats['violations_detected'] += 1
         return True
+    
+    async def handle_spam_violation(self, message: Message, spam_result: SpamDetectionResult, user: User):
+        """Обработка нарушения антиспама"""
+        user_id = message.from_user.id
+        
+        self.logger.info(f"Обнаружен спам от пользователя {user_id}: {spam_result.spam_type} ({spam_result.confidence})")
+        
+        # Удаляем сообщение
+        await self.delete_message_safe(message)
+        
+        # Добавляем нарушение в БД
+        db.add_violation(
+            user_id=user_id,
+            message_id=message.message_id,
+            violation_type=spam_result.spam_type,
+            violation_text=message.text[:500],
+            action_taken=spam_result.action
+        )
+        
+        # Выполняем действие
+        if spam_result.action == "warn":
+            warnings_count = db.add_warning(user_id)
+            await self.notify_user_action(message, "warned", f"Спам: {spam_result.reason}")
+            
+            # Отправляем предупреждение в ЛС
+            warning_text = (
+                f"⚠️ Ваше сообщение удалено за спам.\n"
+                f"Причина: {spam_result.reason}\n"
+                f"Предупреждений: {warnings_count}/{bot_config.WARNING_THRESHOLD}"
+            )
+            await self.send_private_warning(message.from_user, warning_text)
+            self.stats['users_warned'] += 1
+            
+            # Проверяем лимит предупреждений
+            if warnings_count >= bot_config.WARNING_THRESHOLD:
+                db.ban_user(user_id, bot_config.BAN_DURATION_MINUTES)
+                await self.notify_user_action(message, "banned", "Превышен лимит предупреждений")
+                self.stats['users_banned'] += 1
+        
+        elif spam_result.action == "mute":
+            db.ban_user(user_id, bot_config.BAN_DURATION_MINUTES)
+            await self.notify_user_action(message, "muted", f"Спам: {spam_result.reason}")
+            
+            mute_text = (
+                f"🔇 Вы ограничены на {bot_config.BAN_DURATION_MINUTES} минут за спам.\n"
+                f"Причина: {spam_result.reason}"
+            )
+            await self.send_private_warning(message.from_user, mute_text)
+            self.stats['users_banned'] += 1
+        
+        elif spam_result.action == "ban":
+            db.ban_user(user_id, bot_config.BAN_DURATION_MINUTES * 3)  # Увеличенное время
+            await self.notify_user_action(message, "banned", f"Множественный спам: {spam_result.reason}")
+            
+            ban_text = (
+                f"🚫 Вы заблокированы за повторный спам.\n"
+                f"Причина: {spam_result.reason}\n"
+                f"Время: {bot_config.BAN_DURATION_MINUTES * 3} минут"
+            )
+            await self.send_private_warning(message.from_user, ban_text)
+            self.stats['users_banned'] += 1
+        
+        self.stats['violations_detected'] += 1
     
     async def send_private_warning(self, user, warning_text: str):
         """Отправка предупреждения в личные сообщения"""
@@ -693,6 +777,7 @@ class ModerationBot:
         /mute <user_id> [время] - Ограничить пользователя
         /warn <user_id> - Предупреждение пользователю
         /user_info <user_id> - Информация о пользователе
+        /spam_info <user_id> - Статистика антиспама пользователя
         /cleanup - Очистка истекших банов
         /del - Удалить сообщение бота (ответом)
         
@@ -877,6 +962,48 @@ class ModerationBot:
                     violation_name = VIOLATION_TYPES.get(violation.violation_type, violation.violation_type)
                     date_str = violation.created_at.strftime('%d.%m %H:%M') if violation.created_at else 'Неизвестно'
                     info_text += f"• {date_str}: {violation_name}\n"
+            
+            await update.message.reply_text(info_text, parse_mode=ParseMode.MARKDOWN)
+            
+        except ValueError:
+            await update.message.reply_text("❌ Некорректный ID пользователя")
+
+    async def cmd_spam_info(self, update: Update, context: CallbackContext):
+        """Команда /spam_info"""
+        if not await self.is_admin(update.effective_user.id):
+            await update.message.reply_text("❌ Команда доступна только администраторам")
+            return
+        
+        if not ANTISPAM_AVAILABLE:
+            await update.message.reply_text("❌ Антиспам система недоступна")
+            return
+        
+        if len(context.args) < 1:
+            await update.message.reply_text("Использование: /spam_info <user_id>")
+            return
+        
+        try:
+            user_id = int(context.args[0])
+            stats = antispam.get_user_stats(user_id)
+            
+            last_activity = "Никогда"
+            if stats.get('last_activity'):
+                import datetime
+                last_activity = datetime.datetime.fromtimestamp(stats['last_activity']).strftime('%d.%m.%Y %H:%M')
+            
+            info_text = f"""
+    🛡️ *Статистика антиспама для пользователя {user_id}:*
+
+    📊 *Данные:*
+    - Сообщений в истории: {stats.get('messages', 0)}
+    - Нарушений спама: {stats.get('violations', 0)}
+    - Последняя активность: {last_activity}
+
+    ℹ️ *Настройки системы:*
+    - Лимит сообщений в минуту: {antispam.FLOOD_MESSAGES_LIMIT}
+    - Порог схожести: {antispam.SIMILARITY_THRESHOLD}
+    - Лимит коротких сообщений: {antispam.SHORT_MESSAGE_LIMIT}
+    """
             
             await update.message.reply_text(info_text, parse_mode=ParseMode.MARKDOWN)
             

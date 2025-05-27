@@ -25,6 +25,13 @@ class BotConfig:
     BAN_DURATION_MINUTES: int = 60  # Продолжительность бана в минутах
     WARNING_THRESHOLD: int = 3  # Количество предупреждений до бана
 
+    # Настройки антиспама
+    ANTISPAM_ENABLED: bool = True
+    ANTISPAM_FLOOD_LIMIT: int = 5        # сообщений за минуту
+    ANTISPAM_DUPLICATE_THRESHOLD: int = 2  # дублей для блокировки
+    ANTISPAM_SIMILARITY_THRESHOLD: float = 0.8  # порог схожести (0-1)
+    ANTISPAM_SHORT_MESSAGE_LIMIT: int = 3   # коротких сообщений за период
+
     # Настройки системы доверия
     TRUST_SYSTEM_ENABLED: bool = True
     TRUST_DAYS_THRESHOLD: int = 3  # Дней до получения доверия
@@ -156,7 +163,11 @@ VIOLATION_TYPES = {
     "advertising": "Реклама",
     "inappropriate": "Неприличный контент",
     "illegal": "Нарушение законодательства",
-    "suspicious_links": "Подозрительные ссылки"
+    "suspicious_links": "Подозрительные ссылки",
+    "flood": "Флуд (много сообщений)",
+    "duplicate": "Дублированные сообщения",
+    "similar": "Похожие сообщения",
+    "short_spam": "Спам короткими сообщениями"
 }
 
 # Действия модерации
@@ -220,12 +231,17 @@ def load_config_from_env() -> BotConfig:
     config.AUTO_DELETE_BANNED_WORDS = os.getenv("AUTO_DELETE_BANNED_WORDS", "true").lower() == "true"
     config.AUTO_BAN_ON_BANNED_WORDS = os.getenv("AUTO_BAN_ON_BANNED_WORDS", "true").lower() == "true"
     config.USE_OPENAI_ANALYSIS = os.getenv("USE_OPENAI_ANALYSIS", "true").lower() == "true"
+    config.ANTISPAM_ENABLED = os.getenv("ANTISPAM_ENABLED", "true").lower() == "true"
     
     # Числовые значения
     try:
         config.BAN_DURATION_MINUTES = int(os.getenv("BAN_DURATION_MINUTES", "60"))
         config.WARNING_THRESHOLD = int(os.getenv("WARNING_THRESHOLD", "3"))
         config.OPENAI_ANALYSIS_THRESHOLD = float(os.getenv("OPENAI_ANALYSIS_THRESHOLD", "0.7"))
+        config.ANTISPAM_FLOOD_LIMIT = int(os.getenv("ANTISPAM_FLOOD_LIMIT", "5"))
+        config.ANTISPAM_DUPLICATE_THRESHOLD = int(os.getenv("ANTISPAM_DUPLICATE_THRESHOLD", "2"))
+        config.ANTISPAM_SIMILARITY_THRESHOLD = float(os.getenv("ANTISPAM_SIMILARITY_THRESHOLD", "0.8"))
+        config.ANTISPAM_SHORT_MESSAGE_LIMIT = int(os.getenv("ANTISPAM_SHORT_MESSAGE_LIMIT", "3"))
     except ValueError:
         pass  # Используем значения по умолчанию
     
