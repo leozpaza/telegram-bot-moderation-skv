@@ -295,7 +295,7 @@ class ModerationBot:
         # Определяем действие
         if bot_config.AUTO_BAN_ON_BANNED_WORDS:
             # Банируем пользователя
-            db.ban_user(user_id, bot_config.BAN_DURATION_MINUTES)
+            db.ban_user(user_id, permanent=True)
             await self.notify_user_action(message, "banned", "Использование запрещенной лексики")
             self.stats['users_banned'] += 1
         else:
@@ -484,7 +484,7 @@ class ModerationBot:
                 self.stats['users_banned'] += 1
         
         elif spam_result.action == "mute":
-            db.ban_user(user_id, bot_config.BAN_DURATION_MINUTES)
+            db.ban_user(user_id, bot_config.SPAM_BAN_DURATION)
             await self.notify_user_action(message, "muted", f"Спам: {spam_result.reason}")
             
             mute_text = (
@@ -495,7 +495,7 @@ class ModerationBot:
             self.stats['users_banned'] += 1
         
         elif spam_result.action == "ban":
-            db.ban_user(user_id, bot_config.BAN_DURATION_MINUTES * 3)  # Увеличенное время
+            db.ban_user(user_id, bot_config.REPEATED_SPAM_BAN_DURATION)
             await self.notify_user_action(message, "banned", f"Множественный спам: {spam_result.reason}")
             
             ban_text = (
@@ -541,13 +541,13 @@ class ModerationBot:
                 
         elif action == "mute":
             # Сообщение уже удалено
-            db.ban_user(user_id, bot_config.BAN_DURATION_MINUTES)
+            db.ban_user(user_id, bot_config.MUTE_DURATION)
             await self.notify_user_action(message, "muted", reason)
             self.stats['users_banned'] += 1
             
         elif action == "ban":
             # Сообщение уже удалено
-            db.ban_user(user_id, None)  # Постоянный бан
+            db.ban_user(user_id, permanent=True)  # Постоянный бан
             await self.notify_user_action(message, "banned", reason)
             self.stats['users_banned'] += 1
     

@@ -22,8 +22,18 @@ class BotConfig:
     # Настройки модерации
     AUTO_DELETE_BANNED_WORDS: bool = True
     AUTO_BAN_ON_BANNED_WORDS: bool = True
-    BAN_DURATION_MINUTES: int = 60  # Продолжительность бана в минутах
+    BAN_DURATION_MINUTES: int = 0  # Продолжительность бана в минутах
     WARNING_THRESHOLD: int = 3  # Количество предупреждений до бана
+
+    # ДОБАВИТЬ:
+    DEFAULT_BAN_TYPE: str = "permanent"  # по умолчанию постоянные
+    TEMP_BAN_DURATION_MINUTES: int = 60  # для временных банов (муты)
+    AUTO_CLEANUP_EXPIRED_BANS: bool = True  # ОСТАВИТЬ ВКЛЮЧЕННОЙ!
+
+    # Настройки для разных типов нарушений:
+    SPAM_BAN_DURATION: int = 30        # спам - 30 минут
+    MUTE_DURATION: int = 60           # мут - 1 час  
+    REPEATED_SPAM_BAN_DURATION: int = 180  # повторный спам - 3 часа
 
     # Настройки антиспама
     ANTISPAM_ENABLED: bool = True

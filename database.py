@@ -441,6 +441,8 @@ class ModerationDatabase:
     
     def cleanup_expired_bans(self) -> int:
         """Очистить истекшие баны"""
+        # УБРАТЬ проверку bot_config.AUTO_CLEANUP_EXPIRED_BANS
+        # Автоочистка всегда работает
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -456,7 +458,7 @@ class ModerationDatabase:
                 conn.commit()
                 
                 if cleaned_count > 0:
-                    self.logger.info(f"Очищено {cleaned_count} истекших банов")
+                    self.logger.info(f"Очищено {cleaned_count} истекших временных банов")
                 
                 return cleaned_count
                 
