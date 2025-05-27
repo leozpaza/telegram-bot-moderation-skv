@@ -116,6 +116,7 @@ class ModerationBot:
         self.application.add_handler(CommandHandler("user_info", self.cmd_user_info))
         self.application.add_handler(CommandHandler("spam_info", self.cmd_spam_info))
         self.application.add_handler(CommandHandler("cleanup", self.cmd_cleanup))
+        self.application.add_handler(CommandHandler("db_check", self.cmd_db_check))
 
         # Команды системы доверия
         self.application.add_handler(CommandHandler("trust_info", self.cmd_trust_info))
@@ -1009,6 +1010,51 @@ class ModerationBot:
             
         except ValueError:
             await update.message.reply_text("❌ Некорректный ID пользователя")
+
+    async def cmd_db_check(self, update: Update, context: CallbackContext):
+        """Команда /db_check для диагностики базы данных"""
+        if not await self.is_admin(update.effective_user.id):
+            await update.message.reply_text("❌ Команда доступна только администраторам")
+            return
+        
+        try:
+            import os
+            db_file = bot_config.DATABASE_FILE
+            
+            if os.path.exists(db_file):
+                size = os.path.getsize(db_file)
+                
+                # Проверяем содержимое базы
+                with sqlite3.connect(db_file) as conn:
+                    cursor = conn.cursor()
+                    
+                    cursor.execute("SELECT COUNT(*) FROM users")
+                    users_count = cursor.fetchone()[0]
+                    
+                    cursor.execute("SELECT COUNT(*) FROM violations") 
+                    violations_count = cursor.fetchone()[0]
+                    
+                    cursor.execute("SELECT COUNT(*) FROM users WHERE is_banned = 1")
+                    banned_count = cursor.fetchone()[0]
+                    
+                    info = f"""
+    🔍 **Диагностика базы данных:**
+
+    📁 Файл: {db_file}
+    📊 Размер: {size} байт
+    👥 Пользователей: {users_count}
+    🚫 Нарушений: {violations_count}  
+    🔒 Заблокированных: {banned_count}
+
+    {'✅ База данных в порядке' if size > 0 else '❌ База данных пуста!'}
+    """
+            else:
+                info = f"❌ Файл базы данных не найден: {db_file}"
+            
+            await update.message.reply_text(info, parse_mode=ParseMode.MARKDOWN)
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Ошибка диагностики: {e}")
     
     async def cmd_cleanup(self, update: Update, context: CallbackContext):
         """Команда /cleanup"""

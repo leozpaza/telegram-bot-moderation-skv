@@ -9,6 +9,20 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Tuple
 from dataclasses import dataclass
 from config import bot_config
+import os
+
+def check_database_file():
+    """Проверка состояния файла базы данных"""
+    from config import bot_config
+    db_file = bot_config.DATABASE_FILE
+    
+    if os.path.exists(db_file):
+        size = os.path.getsize(db_file)
+        print(f"База данных существует: {db_file}, размер: {size} байт")
+        return True
+    else:
+        print(f"База данных НЕ СУЩЕСТВУЕТ: {db_file}")
+        return False
 
 @dataclass
 class User:
@@ -64,8 +78,16 @@ class ModerationDatabase:
     def init_database(self):
         """Инициализация базы данных и создание таблиц"""
         try:
+            # ДОБАВЛЕНО: проверка существования базы до инициализации
+            db_existed_before = check_database_file()
+            
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+                
+                # ДОБАВЛЕНО: проверяем существующие таблицы
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                existing_tables = [table[0] for table in cursor.fetchall()]
+                self.logger.info(f"Существующие таблицы: {existing_tables}")
                 
                 # Таблица пользователей
                 cursor.execute("""
@@ -134,6 +156,13 @@ class ModerationDatabase:
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_appeals_status ON appeals(status)")
                 
                 conn.commit()
+                
+                # ДОБАВЛЕНО: проверка после создания таблиц
+                if db_existed_before:
+                    self.logger.info("База данных уже существовала, данные должны сохраниться")
+                else:
+                    self.logger.info("Создана новая база данных")
+                
                 self.logger.info("База данных инициализирована успешно")
 
             # Вызываем миграцию после создания таблиц
@@ -235,8 +264,9 @@ class ModerationDatabase:
                 # Проверяем, существуют ли новые колонки
                 cursor.execute("PRAGMA table_info(users)")
                 columns = [column[1] for column in cursor.fetchall()]
+                self.logger.info(f"Существующие колонки в таблице users: {columns}")
                 
-                # Добавляем отсутствующие колонки
+                # Добавляем отсутствующие колонки БЕЗОПАСНО
                 new_columns = [
                     ("joined_chat_at", "DATETIME"),
                     ("messages_count", "INTEGER DEFAULT 0"),
@@ -252,6 +282,21 @@ class ModerationDatabase:
                             self.logger.info(f"Добавлена колонка {column_name}")
                         except sqlite3.Error as e:
                             self.logger.error(f"Ошибка добавления колонки {column_name}: {e}")
+                            # НЕ останавливаем выполнение, продолжаем
+                
+                # Проверяем финальное состояние
+                cursor.execute("PRAGMA table_info(users)")
+                final_columns = [column[1] for column in cursor.fetchall()]
+                self.logger.info(f"Колонки после миграции: {final_columns}")
+                
+                # Проверяем количество записей
+                cursor.execute("SELECT COUNT(*) FROM users")
+                user_count = cursor.fetchone()[0]
+                self.logger.info(f"Количество пользователей в БД: {user_count}")
+                
+                cursor.execute("SELECT COUNT(*) FROM violations")
+                violations_count = cursor.fetchone()[0]
+                self.logger.info(f"Количество нарушений в БД: {violations_count}")
                 
                 conn.commit()
                 self.logger.info("Миграция базы данных выполнена успешно")
@@ -394,8 +439,15 @@ class ModerationDatabase:
     def get_statistics(self) -> Dict:
         """Получить статистику модерации"""
         try:
+
+            self.logger.debug("Запрос статистики из базы данных")
+
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                tables = cursor.fetchall()
+                self.logger.debug(f"Доступные таблицы: {tables}")
                 
                 # Общее количество пользователей
                 cursor.execute("SELECT COUNT(*) FROM users")
